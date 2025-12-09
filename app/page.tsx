@@ -3,16 +3,12 @@ import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { RefreshCw, Plus, Trash2, CheckCircle, Clock } from "lucide-react";
 
-// --- CONFIGURACIÓN SEGURA ---
-// Next.js buscará estas variables en Vercel o en tu archivo .env.local
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// --- CONFIGURACIÓN DE SUPABASE CORREGIDA ---
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
-// Validación simple para evitar errores si faltan las variables
-const supabase = createClient(
-  supabaseUrl || "", 
-  supabaseKey || ""
-);
+// Creamos el cliente UNA sola vez
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function Dashboard() {
   const [pedidos, setPedidos] = useState<any[]>([]);
@@ -38,10 +34,14 @@ export default function Dashboard() {
 
   async function cargarPedidos() {
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('pedidos')
       .select('*')
       .order('fecha_entrega', { ascending: true });
+    
+    if (error) {
+      console.error("Error cargando pedidos:", error);
+    }
     
     if (data) setPedidos(data);
     setLoading(false);
@@ -53,7 +53,7 @@ export default function Dashboard() {
     const fecha = new Date();
     fecha.setDate(fecha.getDate() + 7); 
 
-    await supabase.from('pedidos').insert({
+    const { error } = await supabase.from('pedidos').insert({
       nombre_pedido: nuevoNombre,
       cliente: nuevoCliente,
       precio_total: Number(nuevoPrecio) || 0,
@@ -61,6 +61,12 @@ export default function Dashboard() {
       fecha_entrega: fecha.toISOString().split('T')[0],
       estado: 'Recepcionado'
     });
+
+    if (error) {
+      alert("Error al guardar: " + error.message);
+      return;
+    }
+
     setShowModal(false);
     cargarPedidos();
     setNuevoNombre(""); setNuevoCliente(""); setNuevoPrecio(""); setNuevoAbono("");
@@ -101,7 +107,8 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-bold mb-2">⚠️ Falta Configuración</h1>
           <p>No se encontraron las credenciales de Supabase.</p>
-          <p className="text-sm mt-4">Asegúrate de configurar las variables de entorno en Vercel o en .env.local</p>
+          <p className="text-sm mt-4">Asegúrate de configurar las variables de entorno en Vercel (Settings {'>'} Environment Variables)</p>
+          <code className="block mt-2 bg-red-100 p-2 rounded text-xs">VITE_SUPABASE_URL</code>
         </div>
       </div>
     );
@@ -114,7 +121,7 @@ export default function Dashboard() {
       <header className="max-w-7xl mx-auto mb-8">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl md:text-3xl font-bold text-indigo-900 flex items-center gap-2">
-             🏭 Taller 3D <span className="text-sm font-normal text-gray-500 bg-gray-200 px-2 py-1 rounded-full">Admin</span>
+              🏭 Taller 3D <span className="text-sm font-normal text-gray-500 bg-gray-200 px-2 py-1 rounded-full">Admin</span>
           </h1>
           <button onClick={cargarPedidos} className="p-2 hover:bg-gray-200 rounded-full transition">
             <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
