@@ -23,6 +23,8 @@ import {
   Pencil,
   FileText,
   Eye,
+  History,
+  ListTodo,
 } from "lucide-react"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -63,6 +65,8 @@ export default function Dashboard() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
   const [viewingPedido, setViewingPedido] = useState<Pedido | null>(null)
+
+  const [activeTab, setActiveTab] = useState<"activos" | "historial">("activos")
 
   // Estados para el formulario
   const [nuevoNombre, setNuevoNombre] = useState("")
@@ -215,24 +219,33 @@ export default function Dashboard() {
     cargarPedidos()
   }
 
-  // --- CÁLCULOS ---
-  const totalVendido = pedidos.reduce((acc, p) => acc + (p.precio_total || 0), 0)
-  const totalRecaudado = pedidos.reduce((acc, p) => acc + (p.abono || 0), 0)
+  const pedidosActivos = pedidos.filter((p) => p.estado !== "Listo" && p.estado !== "Entregado")
+  const pedidosHistorial = pedidos.filter((p) => p.estado === "Listo" || p.estado === "Entregado")
+
+  const pedidosBase = activeTab === "activos" ? pedidosActivos : pedidosHistorial
+
+  const totalVendido = pedidosActivos.reduce((acc, p) => acc + (p.precio_total || 0), 0)
+  const totalRecaudado = pedidosActivos.reduce((acc, p) => acc + (p.abono || 0), 0)
   const porCobrar = totalVendido - totalRecaudado
 
-  const pedidosFiltrados = pedidos
+  const pedidosFiltrados = pedidosBase
     .filter((p) => {
-      const matchesStatus = filterStatus === "all" || p.estado === filterStatus
-      const matchesSearch =
-        searchQuery === "" ||
-        p.nombre_pedido?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.cliente?.toLowerCase().includes(searchQuery.toLowerCase())
-      return matchesStatus && matchesSearch
+      if (activeTab === "activos" && filterStatus !== "all") {
+        return p.estado === filterStatus
+      }
+      return true
+    })
+    .filter((p) => {
+      if (!searchQuery) return true
+      return (
+        p.nombre_pedido.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (p.cliente && p.cliente.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
     })
     .sort((a, b) => {
       if (sortBy === "fecha") {
-        const dateA = new Date(a.fecha_entrega).getTime()
-        const dateB = new Date(b.fecha_entrega).getTime()
+        const dateA = new Date(a.fecha_entrega || "2099-12-31").getTime()
+        const dateB = new Date(b.fecha_entrega || "2099-12-31").getTime()
         return sortOrder === "asc" ? dateA - dateB : dateB - dateA
       } else {
         return sortOrder === "asc" ? a.precio_total - b.precio_total : b.precio_total - a.precio_total
@@ -312,37 +325,109 @@ export default function Dashboard() {
             </button>
           </div>
 
-          {/* Metrics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <MetricCard
-              icon={<TrendingUp size={20} />}
-              label="Ventas Totales"
-              value={`$${totalVendido.toLocaleString()}`}
-              colorClass="text-emerald-400"
-              bgClass="bg-emerald-500/10"
-            />
-            <MetricCard
-              icon={<DollarSign size={20} />}
-              label="Recaudado"
-              value={`$${totalRecaudado.toLocaleString()}`}
-              colorClass="text-blue-400"
-              bgClass="bg-blue-500/10"
-            />
-            <MetricCard
-              icon={<AlertCircle size={20} />}
-              label="Por Cobrar"
-              value={`$${porCobrar.toLocaleString()}`}
-              colorClass="text-red-400"
-              bgClass="bg-red-500/10"
-            />
-            <MetricCard
-              icon={<Package size={20} />}
-              label="Pedidos"
-              value={pedidos.length}
-              colorClass="text-neutral-300"
-              bgClass="bg-neutral-500/10"
-            />
+          <div className="flex gap-2 mb-6">
+            <button
+              onClick={() => {
+                setActiveTab("activos")
+                setFilterStatus("all")
+              }}
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all ${
+                activeTab === "activos"
+                  ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/25"
+                  : "bg-[#151515] text-neutral-400 border border-[#262626] hover:text-white hover:border-[#333]"
+              }`}
+            >
+              <ListTodo size={18} />
+              <span>Pedidos Activos</span>
+              <span
+                className={`ml-1 px-2 py-0.5 rounded-full text-xs font-bold ${
+                  activeTab === "activos" ? "bg-white/20 text-white" : "bg-emerald-500/20 text-emerald-400"
+                }`}
+              >
+                {pedidosActivos.length}
+              </span>
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab("historial")
+                setFilterStatus("all")
+              }}
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all ${
+                activeTab === "historial"
+                  ? "bg-neutral-700 text-white shadow-lg shadow-neutral-700/25"
+                  : "bg-[#151515] text-neutral-400 border border-[#262626] hover:text-white hover:border-[#333]"
+              }`}
+            >
+              <History size={18} />
+              <span>Historial</span>
+              <span
+                className={`ml-1 px-2 py-0.5 rounded-full text-xs font-bold ${
+                  activeTab === "historial" ? "bg-white/20 text-white" : "bg-neutral-500/20 text-neutral-400"
+                }`}
+              >
+                {pedidosHistorial.length}
+              </span>
+            </button>
           </div>
+
+          {activeTab === "activos" && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <MetricCard
+                icon={<TrendingUp size={20} />}
+                label="Ventas Activas"
+                value={`$${totalVendido.toLocaleString()}`}
+                colorClass="text-emerald-400"
+                bgClass="bg-emerald-500/10"
+              />
+              <MetricCard
+                icon={<DollarSign size={20} />}
+                label="Recaudado"
+                value={`$${totalRecaudado.toLocaleString()}`}
+                colorClass="text-blue-400"
+                bgClass="bg-blue-500/10"
+              />
+              <MetricCard
+                icon={<AlertCircle size={20} />}
+                label="Por Cobrar"
+                value={`$${porCobrar.toLocaleString()}`}
+                colorClass="text-red-400"
+                bgClass="bg-red-500/10"
+              />
+              <MetricCard
+                icon={<Package size={20} />}
+                label="Pedidos Activos"
+                value={pedidosActivos.length}
+                colorClass="text-neutral-300"
+                bgClass="bg-neutral-500/10"
+              />
+            </div>
+          )}
+
+          {activeTab === "historial" && (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+              <MetricCard
+                icon={<CheckCircle size={20} />}
+                label="Pedidos Completados"
+                value={pedidosHistorial.length}
+                colorClass="text-emerald-400"
+                bgClass="bg-emerald-500/10"
+              />
+              <MetricCard
+                icon={<TrendingUp size={20} />}
+                label="Total Histórico"
+                value={`$${pedidosHistorial.reduce((acc, p) => acc + (p.precio_total || 0), 0).toLocaleString()}`}
+                colorClass="text-blue-400"
+                bgClass="bg-blue-500/10"
+              />
+              <MetricCard
+                icon={<DollarSign size={20} />}
+                label="Recaudado"
+                value={`$${pedidosHistorial.reduce((acc, p) => acc + (p.abono || 0), 0).toLocaleString()}`}
+                colorClass="text-neutral-300"
+                bgClass="bg-neutral-500/10"
+              />
+            </div>
+          )}
 
           {/* Search and Sort */}
           <div className="flex flex-col md:flex-row gap-4 mb-4">
@@ -350,7 +435,7 @@ export default function Dashboard() {
               <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
               <input
                 type="text"
-                placeholder="Buscar por nombre o cliente..."
+                placeholder={activeTab === "activos" ? "Buscar pedidos activos..." : "Buscar en historial..."}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 bg-[#151515] border border-[#262626] rounded-xl text-white placeholder:text-neutral-600 focus:border-emerald-500/50 focus:outline-none transition-colors"
@@ -398,33 +483,28 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Filter buttons */}
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            <FilterButton
-              active={filterStatus === "all"}
-              onClick={() => setFilterStatus("all")}
-              label="Todos"
-              count={pedidos.length}
-            />
-            <FilterButton
-              active={filterStatus === "Recepcionado"}
-              onClick={() => setFilterStatus("Recepcionado")}
-              label="Pendientes"
-              count={pedidos.filter((p) => p.estado === "Recepcionado").length}
-            />
-            <FilterButton
-              active={filterStatus === "En Proceso"}
-              onClick={() => setFilterStatus("En Proceso")}
-              label="En Proceso"
-              count={pedidos.filter((p) => p.estado === "En Proceso").length}
-            />
-            <FilterButton
-              active={filterStatus === "Listo"}
-              onClick={() => setFilterStatus("Listo")}
-              label="Listos"
-              count={pedidos.filter((p) => p.estado === "Listo").length}
-            />
-          </div>
+          {activeTab === "activos" && (
+            <div className="flex gap-2 overflow-x-auto pb-2">
+              <FilterButton
+                active={filterStatus === "all"}
+                onClick={() => setFilterStatus("all")}
+                label="Todos"
+                count={pedidosActivos.length}
+              />
+              <FilterButton
+                active={filterStatus === "Recepcionado"}
+                onClick={() => setFilterStatus("Recepcionado")}
+                label="Pendientes"
+                count={pedidosActivos.filter((p) => p.estado === "Recepcionado").length}
+              />
+              <FilterButton
+                active={filterStatus === "En Proceso"}
+                onClick={() => setFilterStatus("En Proceso")}
+                label="En Proceso"
+                count={pedidosActivos.filter((p) => p.estado === "En Proceso").length}
+              />
+            </div>
+          )}
         </header>
       </div>
 
@@ -439,17 +519,28 @@ export default function Dashboard() {
           </div>
         ) : pedidosFiltrados.length === 0 ? (
           <div className="text-center py-20">
-            <Package size={48} className="mx-auto mb-4 text-neutral-700" />
-            <p className="text-neutral-500">
-              {pedidos.length === 0 ? "No hay pedidos aún. ¡Crea el primero!" : "No hay pedidos en esta categoría"}
-            </p>
+            {activeTab === "activos" ? (
+              <>
+                <Package size={48} className="mx-auto mb-4 text-neutral-700" />
+                <p className="text-neutral-500">
+                  {pedidosActivos.length === 0
+                    ? "No hay pedidos activos. ¡Crea el primero!"
+                    : "No hay pedidos en esta categoría"}
+                </p>
+              </>
+            ) : (
+              <>
+                <History size={48} className="mx-auto mb-4 text-neutral-700" />
+                <p className="text-neutral-500">No hay pedidos en el historial aún</p>
+              </>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {pedidosFiltrados.map((p, index) => {
               const deuda = (p.precio_total || 0) - (p.abono || 0)
               const porcentajePagado = p.precio_total > 0 ? (p.abono / p.precio_total) * 100 : 0
-              const urgent = isUrgent(p.fecha_entrega) && p.estado !== "Listo"
+              const urgent = activeTab === "activos" && isUrgent(p.fecha_entrega) && p.estado !== "Listo"
               const daysLeft = getDaysRemaining(p.fecha_entrega)
 
               return (
@@ -459,7 +550,9 @@ export default function Dashboard() {
                   className={`animate-slide-up bg-[#111] rounded-2xl border p-6 transition-all duration-300 flex flex-col justify-between group hover:shadow-xl ${
                     urgent
                       ? "border-red-500/30 hover:border-red-500/50 hover:shadow-red-500/10"
-                      : "border-[#1a1a1a] hover:border-emerald-500/30 hover:shadow-emerald-500/5"
+                      : activeTab === "historial"
+                        ? "border-[#1a1a1a] hover:border-neutral-500/30 hover:shadow-neutral-500/5"
+                        : "border-[#1a1a1a] hover:border-emerald-500/30 hover:shadow-emerald-500/5"
                   }`}
                 >
                   <div>
